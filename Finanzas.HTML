@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Groudon - Finanzas y Ganancias</title>
+    <link rel="stylesheet" href="../css/usu.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="finanzasApp()">
+    <header>
+        <h1>Finanzas y Trazabilidad de Pagos</h1>
+    <nav>
+    <a href="../index.html">Inicio</a> | 
+    <a href="trabajadores.html">Trabajadores</a> | 
+    <a href="maquinaria.html">Maquinaria</a> | 
+    <a href="finanzas.html">Finanzas</a>
+</nav>
+    </header>
+
+    <main style="padding: 20px;">
+        <div class="encabezado-lol" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <h2>Registro de Facturas y Abonos de Clientes</h2>
+            <div style="display: flex; gap: 10px;">
+                <button id="nuevoUsAdmin" @click="prepararCreacionObra()" style="background-color: #2c5282;">+ Registrar Nueva Obra</button>
+                <button id="nuevoUsAdmin" @click="prepararCreacionPago()">+ Registrar Factura / Pago</button>
+            </div>
+        </div>
+
+        <!-- Mensajes de éxito -->
+        <template x-if="mensaje">
+            <div style="background-color: #d4edda; color: #155724; padding: 10px; margin-bottom: 15px; border-radius: 5px; text-align: center;" x-text="mensaje"></div>
+        </template>
+
+        <!-- Mensajes de error -->
+        <template x-if="mensajeError">
+            <div style="background-color: #f8d7da; color: #721c24; padding: 10px; margin-bottom: 15px; border-radius: 5px; text-align: center;" x-text="mensajeError"></div>
+        </template>
+
+        <!-- SECCIÓN DE RESUMEN FINANCIERO Y SALDOS PENDIENTES POR CADA OBRA -->
+        <h3 style="margin-top: 10px; color: #1c3d5a;">Estado de Obras y Presupuestos</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 25px;">
+            <template x-for="(info, codObra) in obrasCatalogo" :key="codObra">
+                <div style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); border-left: 5px solid #1c3d5a;">
+                    <h4 style="margin: 0 0 5px 0; font-size: 1rem; color: #1c3d5a;" x-text="`${codObra}: ${info.nombreObra}`"></h4>
+                    <p style="margin: 3px 0; font-size: 0.85rem; color: #555;"><strong>Cliente:</strong> <span x-text="info.nombreCliente"></span> (<span x-text="info.rutCliente"></span>)</p>
+                    <p style="margin: 3px 0; font-size: 0.85rem; color: #555;"><strong>Dirección:</strong> <span x-text="info.direccion"></span></p>
+                    <p style="margin: 3px 0; font-size: 0.85rem; color: #555;"><strong>Presupuesto Total:</strong> <span x-text="`$${info.presupuesto.toLocaleString('es-CL')}`"></span></p>
+                    <p style="margin: 3px 0; font-size: 0.85rem; color: #555;"><strong>Total Facturado:</strong> <span x-text="`$${calcularFacturado(codObra).toLocaleString('es-CL')}`"></span></p>
+                    <p style="margin: 5px 0 0 0; font-size: 0.95rem; font-weight: bold; color: #d9534f;">
+                        Saldo Pendiente por Cobrar: <span x-text="`$${(info.presupuesto - calcularFacturado(codObra)).toLocaleString('es-CL')}`"></span>
+                    </p>
+                </div>
+            </template>
+        </div>
+
+        <h3 style="margin-top: 20px; color: #1c3d5a;">Historial de Facturas Registradas</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>N° Folio</th>
+                    <th>RUT Cliente</th>
+                    <th>Cliente (Cache)</th>
+                    <th>Obra y Dirección</th>
+                    <th>Monto Abono</th>
+                    <th>Fecha</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="p in pagos" :key="p.folio">
+                    <tr>
+                        <td x-text="p.folio" style="font-weight: bold;"></td>
+                        <td x-text="p.rutCliente"></td>
+                        <td x-text="p.nombreCliente"></td>
+                        <td>
+                            <strong x-text="p.obra"></strong><br>
+                            <small style="color: #666;" x-text="obtenerDireccionObra(p.obra)"></small>
+                        </td>
+                        <td x-text="`$${Number(p.monto).toLocaleString('es-CL')}`"></td>
+                        <td x-text="p.fecha"></td>
+                        <td>
+                            <span class="rol" 
+                                  :class="p.estado === 'Pagado' ? 'rol-enc' : (p.estado === 'Pendiente' ? 'rol-ad' : 'bot-elim')" 
+                                  x-text="p.estado"></span>
+                        </td>
+                        <td>
+                            <button class="bot-icon" @click="cargarPagoParaEditar(p)">Editar</button>
+                            <button class="bot-elim" @click="eliminarPago(p.folio)">Eliminar</button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+
+        <!-- MODAL 1: REGISTRAR / EDITAR PAGO O FACTURA -->
+        <div id="modaDeUsuario" x-show="modalPagoAbierto" style="display: none;">
+            <form id="fromUsuario" @submit.prevent="guardarPago">
+                <h3 x-text="editandoFolio ? 'Editar Estado de Factura' : 'Registrar Nueva Factura / Pago'"></h3>
+                
+                <div>
+                    <label>N° Folio de Pago</label>
+                    <input type="text" x-model="formPago.folio" :disabled="editandoFolio" required placeholder="Ej: PAGO-004">
+                </div>
+                <div>
+                    <label>Obra Asociada</label>
+                    <select x-model="formPago.obra" :disabled="editandoFolio" @change="autocompletarCliente()" required>
+                        <template x-for="(info, cod) in obrasCatalogo" :key="cod">
+                            <option :value="cod" x-text="`${cod} - ${info.nombreObra} (Presupuesto: $${info.presupuesto.toLocaleString('es-CL')})`"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label>Dirección de la Obra</label>
+                    <input type="text" :value="obtenerDireccionObra(formPago.obra)" readonly style="background-color: #f4f4f4;">
+                </div>
+                <div>
+                    <label>RUT del Cliente (Trazabilidad)</label>
+                    <input type="text" x-model="formPago.rutCliente" readonly style="background-color: #f4f4f4;">
+                </div>
+                <div>
+                    <label>Cliente / Razón Social</label>
+                    <input type="text" x-model="formPago.nombreCliente" readonly style="background-color: #f4f4f4;">
+                </div>
+                <div>
+                    <label>Monto del Abono ($)</label>
+                    <input type="number" min="1" x-model="formPago.monto" :disabled="editandoFolio" required placeholder="Ej: 5000000">
+                </div>
+                <div>
+                    <label>Estado del Pago</label>
+                    <select x-model="formPago.estado">
+                        <option value="Pagado">Pagado</option>
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Anulado">Anulado</option>
+                    </select>
+                </div>
+
+                <div class="acc-form">
+                    <button type="button" id="botCancelin" @click="modalPagoAbierto = false">Cancelar</button>
+                    <button type="submit" x-text="editandoFolio ? 'Actualizar Estado' : 'Guardar Factura'"></button>
+                </div>
+            </form>
+        </div>
+
+        <!-- MODAL 2: REGISTRAR NUEVA OBRA -->
+        <div id="modaDeUsuario" x-show="modalObraAbierto" style="display: none;">
+            <form id="fromUsuario" @submit.prevent="guardarObra">
+                <h3>Registrar Nueva Obra</h3>
+                <div>
+                    <label>Código de Obra ID</label>
+                    <input type="text" x-model="formObra.codigo" required placeholder="Ej: OBRA-03">
+                </div>
+                <div>
+                    <label>Nombre / Tipo de Estructura</label>
+                    <input type="text" x-model="formObra.nombreObra" required placeholder="Ej: Remodelación Edificio Sur">
+                </div>
+                <div>
+                    <label>Dirección</label>
+                    <input type="text" x-model="formObra.direccion" required placeholder="Ej: Av. Vitacura 2900, Santiago">
+                </div>
+                <div>
+                    <label>RUT del Cliente</label>
+                    <input type="text" x-model="formObra.rutCliente" required placeholder="Ej: 76.888.999-1">
+                </div>
+                <div>
+                    <label>Razón Social del Cliente</label>
+                    <input type="text" x-model="formObra.nombreCliente" required placeholder="Ej: Inmobiliaria Las Condes SPA">
+                </div>
+                <div>
+                    <label>Presupuesto Total de la Obra ($)</label>
+                    <input type="number" min="1" x-model="formObra.presupuesto" required placeholder="Ej: 25000000">
+                </div>
+
+                <div class="acc-form">
+                    <button type="button" id="botCancelin" @click="modalObraAbierto = false">Cancelar</button>
+                    <button type="submit">Guardar Obra</button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        function finanzasApp() {
+            const obrasPorDefecto = {
+                'OBRA-01': { nombreObra: 'Demolición Torre Central', direccion: 'Av. Libertador Bernardo O\'Higgins 1240, Santiago', rutCliente: '76.111.222-3', nombreCliente: 'Constructora del Maipo', presupuesto: 20000000 },
+                'OBRA-02': { nombreObra: 'Excavación Edificio Norte', direccion: 'Calle 18 de Septiembre 450, Arica', rutCliente: '76.333.444-5', nombreCliente: 'Inmobiliaria Costanera', presupuesto: 15000000 }
+            };
+
+            return {
+                modalPagoAbierto: false,
+                modalObraAbierto: false,
+                mensaje: '',
+                mensajeError: '',
+                editandoFolio: null,
+
+                // Lee las obras compartidas o carga las 2 por defecto
+                obrasCatalogo: JSON.parse(localStorage.getItem('groudon_obras')) || obrasPorDefecto,
+
+                formPago: { folio: '', rutCliente: '', nombreCliente: '', obra: 'OBRA-01', monto: '', estado: 'Pagado' },
+                formObra: { codigo: '', nombreObra: '', direccion: '', rutCliente: '', nombreCliente: '', presupuesto: '' },
+
+                pagos: [
+                    { folio: 'PAGO-001', rutCliente: '76.111.222-3', nombreCliente: 'Constructora del Maipo', obra: 'OBRA-01', monto: 12000000, fecha: '2026-10-10', estado: 'Pagado' },
+                    { folio: 'PAGO-002', rutCliente: '76.333.444-5', nombreCliente: 'Inmobiliaria Costanera', obra: 'OBRA-02', monto: 5000000, fecha: '2026-11-01', estado: 'Pendiente' }
+                ],
+
+                init() {
+                    if (!localStorage.getItem('groudon_obras')) {
+                        localStorage.setItem('groudon_obras', JSON.stringify(this.obrasCatalogo));
+                    }
+                    this.autocompletarCliente();
+                },
+
+                obtenerDireccionObra(codObra) {
+                    return this.obrasCatalogo[codObra] ? this.obrasCatalogo[codObra].direccion : 'Sin dirección';
+                },
+
+                calcularFacturado(codObra) {
+                    return this.pagos
+                        .filter(p => p.obra === codObra && (p.estado === 'Pagado' || p.estado === 'Pendiente'))
+                        .reduce((suma, p) => suma + Number(p.monto), 0);
+                },
+
+                prepararCreacionObra() {
+                    this.formObra = { codigo: '', nombreObra: '', direccion: '', rutCliente: '', nombreCliente: '', presupuesto: '' };
+                    this.mensajeError = '';
+                    this.modalObraAbierto = true;
+                },
+
+                guardarObra() {
+                    this.mensajeError = '';
+                    let cod = this.formObra.codigo.trim().toUpperCase();
+
+                    if (this.obrasCatalogo[cod]) {
+                        this.mensajeError = `Error: Ya existe una obra registrada con el código ${cod}.`;
+                        this.modalObraAbierto = false;
+                        setTimeout(() => { this.mensajeError = ''; }, 4500);
+                        return;
+                    }
+
+                    this.obrasCatalogo = {
+                        ...this.obrasCatalogo,
+                        [cod]: {
+                            nombreObra: this.formObra.nombreObra,
+                            direccion: this.formObra.direccion,
+                            rutCliente: this.formObra.rutCliente,
+                            nombreCliente: this.formObra.nombreCliente,
+                            presupuesto: Number(this.formObra.presupuesto)
+                        }
+                    };
+
+                    // Sincronizar con localStorage para que Trabajadores y Maquinaria vean la nueva obra
+                    localStorage.setItem('groudon_obras', JSON.stringify(this.obrasCatalogo));
+
+                    this.modalObraAbierto = false;
+                    this.mensaje = `¡Obra ${cod} registrada con éxito y sincronizada con Trabajadores!`;
+                    setTimeout(() => { this.mensaje = ''; }, 4000);
+                },
+
+                prepararCreacionPago() {
+                    this.editandoFolio = null;
+                    let primerObra = Object.keys(this.obrasCatalogo)[0];
+                    this.formPago = { folio: '', rutCliente: '', nombreCliente: '', obra: primerObra, monto: '', estado: 'Pagado' };
+                    this.autocompletarCliente();
+                    this.mensajeError = '';
+                    this.modalPagoAbierto = true;
+                },
+
+                autocompletarCliente() {
+                    let infoObra = this.obrasCatalogo[this.formPago.obra];
+                    if (infoObra) {
+                        this.formPago.rutCliente = infoObra.rutCliente;
+                        this.formPago.nombreCliente = infoObra.nombreCliente;
+                    }
+                },
+
+                cargarPagoParaEditar(p) {
+                    this.editandoFolio = p.folio;
+                    this.formPago = { ...p };
+                    this.mensajeError = '';
+                    this.modalPagoAbierto = true;
+                },
+
+                guardarPago() {
+                    this.mensajeError = '';
+
+                    if (this.editandoFolio) {
+                        let index = this.pagos.findIndex(p => p.folio === this.editandoFolio);
+                        if (index !== -1) {
+                            this.pagos[index].estado = this.formPago.estado;
+                            this.mensaje = `¡Estado de la factura ${this.editandoFolio} actualizado a ${this.formPago.estado}!`;
+                        }
+                    } else {
+                        let existe = this.pagos.some(p => p.folio.toLowerCase() === this.formPago.folio.toLowerCase());
+                        if (existe) {
+                            this.mensajeError = `Error: El número de factura/pago ${this.formPago.folio} ya está registrado.`;
+                            this.modalPagoAbierto = false;
+                            setTimeout(() => { this.mensajeError = ''; }, 4500);
+                            return;
+                        }
+
+                        let infoObra = this.obrasCatalogo[this.formPago.obra];
+                        let montoNuevo = Number(this.formPago.monto);
+
+                        if (this.formPago.estado !== 'Anulado' && infoObra) {
+                            let acumulado = this.calcularFacturado(this.formPago.obra);
+
+                            if ((acumulado + montoNuevo) > infoObra.presupuesto) {
+                                let saldoDisponible = infoObra.presupuesto - acumulado;
+                                this.mensajeError = `Tope Excedido: La obra ${this.formPago.obra} vale $${infoObra.presupuesto.toLocaleString('es-CL')} y ya tiene $${acumulado.toLocaleString('es-CL')} facturados. El saldo disponible es $${saldoDisponible.toLocaleString('es-CL')}.`;
+                                this.modalPagoAbierto = false;
+                                setTimeout(() => { this.mensajeError = ''; }, 6000);
+                                return;
+                            }
+                        }
+
+                        this.pagos.push({
+                            ...this.formPago,
+                            monto: montoNuevo,
+                            fecha: new Date().toISOString().split('T')[0]
+                        });
+                        this.mensaje = '¡Factura registrada y validada contra presupuesto con éxito!';
+                    }
+
+                    this.modalPagoAbierto = false;
+                    setTimeout(() => { this.mensaje = ''; }, 4000);
+                },
+
+                eliminarPago(folio) {
+                    if (confirm(`¿Seguro que deseas eliminar la factura ${folio}?`)) {
+                        this.pagos = this.pagos.filter(p => p.folio !== folio);
+                        this.mensaje = `¡Factura ${folio} eliminada correctamente!`;
+                        setTimeout(() => { this.mensaje = ''; }, 3500);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

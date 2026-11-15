@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es"> 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Groudon - Gestión de Trabajadores</title>
+    <link rel="stylesheet" href="../css/usu.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script> <!-- pasamos el alpinejs a la clase-->
+</head>
+<body x-data="trabajadoresApp()"> <!-- aca aplicamos alpinejs indicando que siga las reglas de mas abajo, esto hace que la pagina sea interactiva-->
+    <header> <!-- barra superior-->
+        <h1>Gestión de Trabajadores</h1> <!-- el primer titulo -->
+    <nav>
+    <a href="../index.html">Inicio</a> | 
+    <a href="trabajadores.html">Trabajadores</a> | 
+    <a href="maquinaria.html">Maquinaria</a> | 
+    <a href="finanzas.html">Finanzas</a>
+</nav> <!-- nav son los menu de navegacion y aca tenemos los link de las otras clases por si acaso no funcionan el login-->
+    </header>
+
+    <main style="padding: 20px;"> <!-- cuerpo principal -->
+        <div class="encabezado-lol"> <!-- los div son los contenedores -->
+            <h2>Personal Operativo y Administrativo</h2> <!-- subtitulo -->
+            <button id="nuevoUsAdmin" @click="prepararCreacion()">+ Registrar Trabajador</button> <!-- como dice el nombre button sonn los botones de acciones, en este caso es el de registrar un nuevo trabajador-->
+        </div>
+
+        <template x-if="mensaje">
+            <div style="background-color: #d4edda; color: #155724; padding: 10px; margin-bottom: 15px; border-radius: 5px; text-align: center;" x-text="mensaje"></div>
+        </template> <!-- los template son carteles de alerta, por los x- adjuntan los mensajes, por ejemplo la linea 27 a la 33 son mensajes de si se pudo ingresar el trabajador o ono-->
+
+        <template x-if="mensajeError">
+            <div style="background-color: #f8d7da; color: #721c24; padding: 10px; margin-bottom: 15px; border-radius: 5px; text-align: center;" x-text="mensajeError"></div>
+        </template>
+
+        <table> <!-- aca creamos lo principal que es la tabla de trabajadores-->
+            <thead> <!-- obviamente el titulo de la tabla-->
+                <tr> <!-- crea la fila horizontal-->
+                    <th>RUT / DNI</th> <!-- aca estan los titulos de cada columna-->
+                    <th>Nombre Completo</th>
+                    <th>Profesión</th>
+                    <th>Salario</th>
+                    <th>Obra Actual (Desnormalizada)</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody> <!-- aca rellenamos los datos de la columna obviamente de cada una-->
+                <template x-for="t in trabajadores" :key="t.rut"> <!--este es un bucle donde se colocan automaticamente los trabajadores en la tabla-->
+                    <tr>
+                        <td x-text="t.rut" style="font-weight: bold;"></td>
+                        <td x-text="t.nombre"></td>
+                        <td x-text="t.profesion"></td>
+                        <td x-text="`$${Number(t.salario).toLocaleString('es-CL')}`"></td>
+                        <td> <!--las celdas por separado-->
+                            <span class="rol" :class="t.obra === 'Disponible' ? 'rol-enc' : 'rol-ad'" x-text="t.obra"></span>
+                        </td>
+                        <td>
+                            <button class="bot-icon" @click="cargarParaEditar(t)">Editar</button>
+                            <button class="bot-elim" @click="eliminar(t.rut)">Eliminar</button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+
+        <!-- Modal de Registro / Edición -->
+        <div id="modaDeUsuario" x-show="modalAbierto" style="display: none;">
+            <form id="fromUsuario" @submit.prevent="guardarTrabajador">
+                <h3 x-text="editandoRut ? 'Editar Trabajador' : 'Nuevo Trabajador'"></h3>
+                
+                <div>
+                    <label>RUT / DNI</label> <!-- aca es donde editamos los datos o agregamos los nuevos trabajdores y que se coloque los datos donde corresponde-->
+                    <input type="text" x-model="form.rut" :disabled="editandoRut" required placeholder="Ej: 12.345.678-9">
+                </div>
+                <div>
+                    <label>Nombre Completo</label>
+                    <input type="text" x-model="form.nombre" required placeholder="Ej: Juan Pérez">
+                </div>
+                <div>
+                    <label>Profesión / Cargo</label>
+                    <input type="text" x-model="form.profesion" required placeholder="Ej: Operador / Supervisor">
+                </div>
+                <div>
+                    <label>Salario Base</label>
+                    <input type="number" x-model="form.salario" required placeholder="Ej: 750000">
+                </div>
+                <div>
+                    <label>Obra Asignada</label>
+                    <select x-model="form.obra">
+                        <option value="Disponible">Disponible (Sin Obra)</option> <!-- los select y option son la lista despegable, ocupan x- para rellenar automaticamente las cosas-->
+                        <!-- Carga dinámicamente TODAS las obras registradas en Finanzas -->
+                        <template x-for="(info, cod) in obrasCatalogo" :key="cod">
+                            <option :value="formatearDescripcionObra(cod, info)" x-text="formatearDescripcionObra(cod, info)"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="acc-form">
+                    <button type="button" id="botCancelin" @click="modalAbierto = false">Cancelar</button>
+                    <button type="submit" x-text="editandoRut ? 'Actualizar Cambios' : 'Guardar'"></button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        function trabajadoresApp() {
+            const obrasPorDefecto = {
+                'OBRA-01': { nombreObra: 'Demolición Torre Central', direccion: 'Av. Libertador Bernardo O\'Higgins 1240, Santiago', rutCliente: '76.111.222-3', nombreCliente: 'Constructora del Maipo', presupuesto: 20000000 },
+                'OBRA-02': { nombreObra: 'Excavación Edificio Norte', direccion: 'Calle 18 de Septiembre 450, Arica', rutCliente: '76.333.444-5', nombreCliente: 'Inmobiliaria Costanera', presupuesto: 15000000 }
+            };
+
+            return {
+                modalAbierto: false,
+                mensaje: '',
+                mensajeError: '',
+                editandoRut: null,
+                obrasCatalogo: JSON.parse(localStorage.getItem('groudon_obras')) || obrasPorDefecto,
+                
+                form: { rut: '', nombre: '', profesion: '', salario: '', obra: 'Disponible' },
+                
+                trabajadores: [
+                    { rut: '18.222.333-4', nombre: 'Carlos Soto', profesion: 'Operador Maquinaria', salario: 850000, obra: 'OBRA-01 - Demolición Torre Central (Av. Libertador Bernardo O\'Higgins 1240, Santiago)' },
+                    { rut: '19.444.555-6', nombre: 'Esteban Miranda', profesion: 'Prevencionista', salario: 900000, obra: 'Disponible' }
+                ],
+
+                init() {
+                    // Asegura leer la última versión de obras creadas en Finanzas
+                    const guardadas = localStorage.getItem('groudon_obras');
+                    if (guardadas) {
+                        this.obrasCatalogo = JSON.parse(guardadas);
+                    }
+                },
+
+                // Replica el formato exacto del Trigger trg_empleado_obra en PostgreSQL
+                formatearDescripcionObra(cod, info) {
+                    return `${cod} - ${info.nombreObra} (${info.direccion})`;
+                },
+
+                prepararCreacion() {
+                    this.editandoRut = null;
+                    this.obrasCatalogo = JSON.parse(localStorage.getItem('groudon_obras')) || obrasPorDefecto;
+                    this.form = { rut: '', nombre: '', profesion: '', salario: '', obra: 'Disponible' };
+                    this.mensajeError = '';
+                    this.modalAbierto = true;
+                },
+
+                cargarParaEditar(t) {
+                    this.editandoRut = t.rut;
+                    this.obrasCatalogo = JSON.parse(localStorage.getItem('groudon_obras')) || obrasPorDefecto;
+                    this.form = { ...t };
+                    this.mensajeError = '';
+                    this.modalAbierto = true;
+                },
+
+                guardarTrabajador() {
+                    this.mensajeError = '';
+
+                    if (this.editandoRut) {
+                        let index = this.trabajadores.findIndex(t => t.rut === this.editandoRut);
+                        if (index !== -1) {
+                            this.trabajadores[index] = { ...this.form };
+                            this.mensaje = '¡Trabajador actualizado con éxito!';
+                        }
+                    } else {
+                        let existe = this.trabajadores.some(t => t.rut === this.form.rut);
+                        if (existe) {
+                            this.mensajeError = `Error: Ya existe un trabajador registrado con el RUT ${this.form.rut}. No se permiten duplicados.`;
+                            return;
+                        }
+
+                        this.trabajadores.push({ ...this.form });
+                        this.mensaje = '¡Trabajador registrado con éxito!';
+                    }
+
+                    this.modalAbierto = false;
+                    setTimeout(() => { this.mensaje = ''; }, 3500);
+                },
+
+                eliminar(rut) {
+                    if(confirm(`¿Seguro que deseas eliminar al trabajador con RUT ${rut}?`)) {
+                        this.trabajadores = this.trabajadores.filter(t => t.rut !== rut);
+                        this.mensaje = '¡Trabajador eliminado y auditado correctamente!';
+                        setTimeout(() => { this.mensaje = ''; }, 3500);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
