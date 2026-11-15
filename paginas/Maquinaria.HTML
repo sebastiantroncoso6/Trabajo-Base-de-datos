@@ -1,0 +1,235 @@
+<!DOCTYPE html> <!-- esta tiene casi las mismas funciones que la página de trabajadores -->
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Groudon - Control de Maquinaria</title>
+    <link rel="stylesheet" href="../css/usu.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script> <!-- adjuntamos el alpinjs-->
+</head>
+<body x-data="maquinariaApp()"> <!-- damos a entender que el alpinejs está activo -->
+    <header> <!-- encabezado de la página -->
+        <h1>Control de Maquinaria y Excavadoras</h1><!--primer titulo-->
+        <nav>
+            <a href="../index.html">Inicio</a> | 
+            <a href="trabajadores.html">Trabajadores</a> | 
+            <a href="maquinaria.html">Maquinaria</a> | 
+            <a href="finanzas.html">Finanzas</a>
+        </nav> <!-- navegación entre páginas -->
+    </header>
+
+    <main style="padding: 20px;">
+        <div class="encabezado-lol">
+            <h2>Inventario de Equipos Pesados</h2>
+            <button id="nuevoUsAdmin" @click="prepararCreacion()">+ Registrar Maquinaria</button>
+        </div>
+
+        <!-- Mensajes de éxito -->
+        <template x-if="mensaje">
+            <div style="background-color: #d4edda; color: #155724; padding: 10px; margin-bottom: 15px; border-radius: 5px; text-align: center;" x-text="mensaje"></div>
+        </template>
+
+        <!-- Mensajes de error -->
+        <template x-if="mensajeError">
+            <div style="background-color: #f8d7da; color: #721c24; padding: 10px; margin-bottom: 15px; border-radius: 5px; text-align: center;" x-text="mensajeError"></div>
+        </template>
+
+        <table> <!--tabla principal de maquinaria-->
+            <thead> <!-- encabezado de la tabla y los th son los títulos de las columnas -->
+                <tr>
+                    <th>Código ID</th>
+                    <th>Modelo</th>
+                    <th>Marca</th>
+                    <th>Año</th>
+                    <th>Costo / Hora</th>
+                    <th>Estado Actual</th>
+                    <th>Obra y Dirección Asignada</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody> <!-- cuerpo de la tabla -->
+                <template x-for="m in maquinas" :key="m.codigo"> <!-- bucle para mostrar cada máquina -->
+                    <tr> <!-- tr crea la fila horizontal y los td rellena cada celda-->
+                        <td x-text="m.codigo" style="font-weight: bold;"></td>
+                        <td x-text="m.modelo"></td>
+                        <td x-text="m.marca"></td>
+                        <td x-text="m.anio"></td>
+                        <td x-text="`$${Number(m.costo).toLocaleString('es-CL')}`"></td>
+                        <td>
+                            <span class="rol" :class="m.estado === 'Disponible' ? 'rol-enc' : 'rol-ad'" x-text="m.estado"></span>
+                        </td>
+                        <td>
+                            <strong x-text="m.obraActual"></strong><br>
+                            <small style="color: #666;" x-text="obtenerDireccionMaquina(m.obraActual)"></small>
+                        </td>
+                        <td>
+                            <button class="bot-icon" @click="cargarParaEditar(m)">Editar</button>
+                            <button class="bot-elim" @click="eliminar(m)">Eliminar</button>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+
+        <!-- Modal de Registro / Edición de Maquinaria -->
+        <div id="modaDeUsuario" x-show="modalAbierto" style="display: none;">
+            <form id="fromUsuario" @submit.prevent="guardarMaquinaria"> <!-- form obviamente definen los formularios-->
+                <h3 x-text="editandoCodigo ? 'Editar Maquinaria / Excavadora' : 'Nueva Maquinaria / Excavadora'"></h3>
+                
+                <div>
+                    <label>Código de Inventario</label> <!-- los label son los textos descriptivos que nos indica que debemos colocar ahi-->
+                    <input type="text" x-model="form.codigo" :disabled="editandoCodigo" required placeholder="Ej: EX-01">
+                </div>
+                <div>
+                    <label>Modelo</label>
+                    <input type="text" x-model="form.modelo" required placeholder="Ej: 320D Excavator"> <!-- los input son los campos donde escribrimos la informacion-->
+                </div>
+                <div>
+                    <label>Marca</label>
+                    <input type="text" x-model="form.marca" required placeholder="Ej: Caterpillar">
+                </div>
+                <div>
+                    <label>Año de Fabricación</label>
+                    <input type="number" min="1980" x-model="form.anio" required placeholder="Ej: 2021">
+                </div>
+                <div>
+                    <label>Costo por Hora ($)</label>
+                    <input type="number" min="0" x-model="form.costo" required placeholder="Ej: 45000">
+                </div>
+                <div>
+                    <label>Estado Operativo</label>
+                    <select x-model="form.estado" @change="sincronizarObra()"> <!-- los select y option son listas desplegables -->
+                        <option value="Disponible">Disponible</option>
+                        <option value="En Obra">En Obra</option>
+                        <option value="Programada">Programada</option>
+                    </select>
+                </div>
+                <div x-show="form.estado !== 'Disponible'">
+                    <label>Obra Asignada</label>
+                    <select x-model="form.obraActual">
+                        <!-- Lee dinámicamente las obras creadas en Finanzas desde localStorage -->
+                        <template x-for="(info, cod) in obrasCatalogo" :key="cod">
+                            <option :value="cod" x-text="`${cod} - ${info.nombreObra} (${info.direccion})`"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="acc-form">
+                    <button type="button" id="botCancelin" @click="modalAbierto = false">Cancelar</button>
+                    <button type="submit" x-text="editandoCodigo ? 'Actualizar Cambios' : 'Guardar'"></button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        function maquinariaApp() {
+            const obrasPorDefecto = {
+                'OBRA-01': { nombreObra: 'Demolición Torre Central', direccion: 'Av. Libertador Bernardo O\'Higgins 1240, Santiago', rutCliente: '76.111.222-3', nombreCliente: 'Constructora del Maipo', presupuesto: 20000000 },
+                'OBRA-02': { nombreObra: 'Excavación Edificio Norte', direccion: 'Calle 18 de Septiembre 450, Arica', rutCliente: '76.333.444-5', nombreCliente: 'Inmobiliaria Costanera', presupuesto: 15000000 }
+            };
+
+            return {
+                modalAbierto: false,
+                mensaje: '',
+                mensajeError: '',
+                editandoCodigo: null,
+
+                // Carga el catálogo compartido de obras
+                obrasCatalogo: JSON.parse(localStorage.getItem('groudon_obras')) || obrasPorDefecto,
+
+                form: { codigo: '', modelo: '', marca: '', anio: '', costo: '', estado: 'Disponible', obraActual: 'Sin asignar' },
+
+                maquinas: JSON.parse(localStorage.getItem('groudon_maquinas')) || [
+                    { codigo: 'EX-01', modelo: 'PC200', marca: 'Komatsu', anio: 2022, costo: 50000, estado: 'En Obra', obraActual: 'OBRA-01' },
+                    { codigo: 'EX-02', modelo: '320E', marca: 'Caterpillar', anio: 2020, costo: 42000, estado: 'Disponible', obraActual: 'Sin asignar' }
+                ],
+
+                init() {
+                    // Sincroniza al iniciar la página
+                    if (!localStorage.getItem('groudon_obras')) {
+                        localStorage.setItem('groudon_obras', JSON.stringify(obrasPorDefecto));
+                    }
+                },
+
+                guardarStorage() {
+                    localStorage.setItem('groudon_maquinas', JSON.stringify(this.maquinas));
+                },
+
+                obtenerDireccionMaquina(codObra) {
+                    if (codObra === 'Sin asignar' || !this.obrasCatalogo[codObra]) return 'Sin obra asignada';
+                    return this.obrasCatalogo[codObra].direccion;
+                },
+
+                prepararCreacion() {
+                    // Refresca el catálogo por si se creó una obra nueva recién en Finanzas
+                    this.obrasCatalogo = JSON.parse(localStorage.getItem('groudon_obras')) || obrasPorDefecto;
+                    this.editandoCodigo = null;
+                    let primeraObra = Object.keys(this.obrasCatalogo)[0] || 'OBRA-01';
+                    this.form = { codigo: '', modelo: '', marca: '', anio: '', costo: '', estado: 'Disponible', obraActual: primeraObra };
+                    this.mensajeError = '';
+                    this.modalAbierto = true;
+                },
+
+                cargarParaEditar(m) {
+                    this.obrasCatalogo = JSON.parse(localStorage.getItem('groudon_obras')) || obrasPorDefecto;
+                    this.editandoCodigo = m.codigo;
+                    this.form = { ...m };
+                    this.mensajeError = '';
+                    this.modalAbierto = true;
+                },
+
+                sincronizarObra() {
+                    if (this.form.estado === 'Disponible') {
+                        this.form.obraActual = 'Sin asignar';
+                    } else if (this.form.obraActual === 'Sin asignar' || !this.form.obraActual) {
+                        this.form.obraActual = Object.keys(this.obrasCatalogo)[0] || 'OBRA-01';
+                    }
+                },
+
+                guardarMaquinaria() {
+                    this.mensajeError = '';
+
+                    if (this.editandoCodigo) {
+                        let index = this.maquinas.findIndex(m => m.codigo === this.editandoCodigo);
+                        if (index !== -1) {
+                            this.maquinas[index] = { ...this.form };
+                            this.mensaje = '¡Maquinaria actualizada con éxito!';
+                        }
+                    } else {
+                        let existe = this.maquinas.some(m => m.codigo.toLowerCase() === this.form.codigo.toLowerCase());
+                        if (existe) {
+                            this.mensajeError = `Error: Ya existe una maquinaria registrada con el código ${this.form.codigo}.`;
+                            this.modalAbierto = false;
+                            setTimeout(() => { this.mensajeError = ''; }, 4000);
+                            return;
+                        }
+
+                        this.maquinas.push({ ...this.form });
+                        this.mensaje = '¡Maquinaria registrada con éxito!';
+                    }
+
+                    this.guardarStorage();
+                    this.modalAbierto = false;
+                    setTimeout(() => { this.mensaje = ''; }, 3500);
+                },
+
+                eliminar(m) {
+                    if (m.estado === 'En Obra') {
+                        this.mensajeError = `No se puede eliminar: La maquinaria ${m.codigo} (${m.marca} ${m.modelo}) se encuentra trabajando en una obra.`;
+                        setTimeout(() => { this.mensajeError = ''; }, 4500);
+                        return;
+                    }
+
+                    if (confirm(`¿Seguro que deseas eliminar la maquinaria ${m.codigo}?`)) {
+                        this.maquinas = this.maquinas.filter(item => item.codigo !== m.codigo);
+                        this.guardarStorage();
+                        this.mensaje = `¡Maquinaria ${m.codigo} eliminada del inventario!`;
+                        setTimeout(() => { this.mensaje = ''; }, 3500);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
